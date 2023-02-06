@@ -6,10 +6,11 @@ import 'package:cake_wallet/view_model/dashboard/dashboard_view_model.dart';
 import 'package:cw_core/wallet_type.dart';
 import 'package:flutter/material.dart';
 import 'package:cake_wallet/generated/i18n.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class MarketPlacePage extends StatelessWidget {
 
-  MarketPlacePage({@required this.dashboardViewModel});
+  MarketPlacePage({required this.dashboardViewModel});
 
   final DashboardViewModel dashboardViewModel;
   final _scrollController = ScrollController();
@@ -35,7 +36,7 @@ class MarketPlacePage extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w500,
-                  color: Theme.of(context).accentTextTheme.display3.backgroundColor,
+                  color: Theme.of(context).accentTextTheme!.headline2!.backgroundColor!,
                 ),
               ),
               Expanded(
@@ -47,6 +48,15 @@ class MarketPlacePage extends StatelessWidget {
                       onTap: () =>_navigatorToGiftCardsPage(context),
                       title: S.of(context).cake_pay_title,
                       subTitle: S.of(context).cake_pay_subtitle,
+                    ),
+                    SizedBox(height: 20),
+                    MarketPlaceItem(
+                      onTap: () => launchUrl(
+                        Uri.https("buy.cakepay.com"),
+                        mode: LaunchMode.externalApplication,
+                      ),
+                      title: S.of(context).cake_pay_web_cards_title,
+                      subTitle: S.of(context).cake_pay_web_cards_subtitle,
                     ),
                   ],
                 ),
@@ -72,7 +82,7 @@ class MarketPlacePage extends StatelessWidget {
                   buttonAction: () => Navigator.of(context).pop());
             });
         break;
-        default:        
+        default:
          Navigator.of(context).pushNamed(Routes.ioniaWelcomePage);
     }
   }

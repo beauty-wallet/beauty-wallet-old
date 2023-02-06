@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'package:cake_wallet/bitcoin/bitcoin.dart';
+import 'package:cake_wallet/core/auth_service.dart';
 import 'package:cake_wallet/entities/language_service.dart';
 import 'package:cake_wallet/buy/order.dart';
-import 'package:cake_wallet/ionia/ionia_category.dart';
-import 'package:cake_wallet/ionia/ionia_merchant.dart';
 import 'package:cake_wallet/store/yat/yat_store.dart';
+import 'package:cake_wallet/utils/exception_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -40,10 +39,22 @@ import 'package:cake_wallet/wallet_type_utils.dart';
 
 final navigatorKey = GlobalKey<NavigatorState>();
 final rootKey = GlobalKey<RootState>();
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 
 Future<void> main() async {
-  try {
+
+  await runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+
+    FlutterError.onError = ExceptionHandler.onError;
+
+    /// A callback that is invoked when an unhandled error occurs in the root
+    /// isolate.
+    PlatformDispatcher.instance.onError = (error, stack) {
+      ExceptionHandler.onError(FlutterErrorDetails(exception: error, stack: stack));
+
+      return true;
+    };
 
     final appDir = await getApplicationDocumentsDirectory();
     await Hive.close();
@@ -109,7 +120,7 @@ Future<void> main() async {
     final templates = await Hive.openBox<Template>(Template.boxName);
     final exchangeTemplates =
         await Hive.openBox<ExchangeTemplate>(ExchangeTemplate.boxName);
-    Box<UnspentCoinsInfo> unspentCoinsInfoSource;
+    Box<UnspentCoinsInfo>? unspentCoinsInfoSource;
     
     if (!isMoneroOnly) {
       unspentCoinsInfoSource = await Hive.openBox<UnspentCoinsInfo>(UnspentCoinsInfo.boxName);
@@ -128,35 +139,26 @@ Future<void> main() async {
         exchangeTemplates: exchangeTemplates,
         transactionDescriptions: transactionDescriptions,
         secureStorage: secureStorage,
-        initialMigrationVersion: 17);
+        initialMigrationVersion: 19);
     runApp(App());
-  } catch (e) {
-    runApp(MaterialApp(
-        debugShowCheckedModeBanner: true,
-        home: Scaffold(
-            body: Container(
-                margin:
-                    EdgeInsets.only(top: 50, left: 20, right: 20, bottom: 20),
-                child: Text(
-                  'Error:\n${e.toString()}',
-                  style: TextStyle(fontSize: 22),
-                )))));
-  }
+  }, (error, stackTrace) async {
+    ExceptionHandler.onError(FlutterErrorDetails(exception: error, stack: stackTrace));
+  });
 }
 
 Future<void> initialSetup(
-    {@required SharedPreferences sharedPreferences,
-    @required Box<Node> nodes,
-    @required Box<WalletInfo> walletInfoSource,
-    @required Box<Contact> contactSource,
-    @required Box<Trade> tradesSource,
-    @required Box<Order> ordersSource,
-    // @required FiatConvertationService fiatConvertationService,
-    @required Box<Template> templates,
-    @required Box<ExchangeTemplate> exchangeTemplates,
-    @required Box<TransactionDescription> transactionDescriptions,
-    @required Box<UnspentCoinsInfo> unspentCoinsInfoSource,
-    FlutterSecureStorage secureStorage,
+    {required SharedPreferences sharedPreferences,
+    required Box<Node> nodes,
+    required Box<WalletInfo> walletInfoSource,
+    required Box<Contact> contactSource,
+    required Box<Trade> tradesSource,
+    required Box<Order> ordersSource,
+    // required FiatConvertationService fiatConvertationService,
+    required Box<Template> templates,
+    required Box<ExchangeTemplate> exchangeTemplates,
+    required Box<TransactionDescription> transactionDescriptions,
+    required FlutterSecureStorage secureStorage,
+    Box<UnspentCoinsInfo>? unspentCoinsInfoSource,
     int initialMigrationVersion = 15}) async {
   LanguageService.loadLocaleList();
   await defaultSettingsMigration(
@@ -188,26 +190,20 @@ class App extends StatefulWidget {
 }
 
 class AppState extends State<App> with SingleTickerProviderStateMixin {
-  AppState() {
-    yatStore = getIt.get<YatStore>();
+  AppState()
+    : yatStore = getIt.get<YatStore>() {
     SystemChrome.setPreferredOrientations(
         [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
   }
 
   YatStore yatStore;
-  StreamSubscription stream;
+  StreamSubscription? stream;
 
   @override
   void initState() {
     super.initState();
     //_handleIncomingLinks();
     //_handleInitialUri();
-  }
-
-  @override
-  void dispose() {
-    stream?.cancel();
-    super.dispose();
   }
 
   Future<void> _handleInitialUri() async {
@@ -227,7 +223,7 @@ class AppState extends State<App> with SingleTickerProviderStateMixin {
 
   void _handleIncomingLinks() {
     if (!kIsWeb) {
-      stream = getUriLinksStream().listen((Uri uri) {
+      stream = getUriLinksStream().listen((Uri? uri) {
         print('uri: $uri');
         if (!mounted) return;
         //_fetchEmojiFromUri(uri);
@@ -256,11 +252,13 @@ class AppState extends State<App> with SingleTickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     return Observer(builder: (BuildContext context) {
-      final settingsStore = getIt.get<AppStore>().settingsStore;
+      final appStore = getIt.get<AppStore>();
+      final authService = getIt.get<AuthService>();
+      final settingsStore = appStore.settingsStore;
       final statusBarColor = Colors.transparent;
       final authenticationStore = getIt.get<AuthenticationStore>();
       final initialRoute =
-      authenticationStore.state == AuthenticationState.denied
+      authenticationStore.state == AuthenticationState.uninitialized
           ? Routes.disclaimer
           : Routes.login;
       final currentTheme = settingsStore.currentTheme;
@@ -277,9 +275,12 @@ class AppState extends State<App> with SingleTickerProviderStateMixin {
 
       return Root(
           key: rootKey,
+          appStore: appStore,
           authenticationStore: authenticationStore,
           navigatorKey: navigatorKey,
+          authService: authService,
           child: MaterialApp(
+            navigatorObservers: [routeObserver],
             navigatorKey: navigatorKey,
             debugShowCheckedModeBanner: false,
             theme: settingsStore.theme,

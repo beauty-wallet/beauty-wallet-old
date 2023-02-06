@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2022 Cake Labs LLC
+Copyright (c) 2018-2023 Cake Labs LLC
 
 Copyright (c) 2023 Evgeniy G. Philippov
 
